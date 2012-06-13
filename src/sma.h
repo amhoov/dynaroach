@@ -1,8 +1,8 @@
 #ifndef __SMA_H
 #define __SMA_H
 
-#define SMA_LEFT    0
-#define SMA_RIGHT   1
+#define SMA_RIGHT   0
+#define SMA_LEFT    1
 #define SMA_HEATING 0
 #define SMA_HOLDING 1     
 #define SMA_OFF     2

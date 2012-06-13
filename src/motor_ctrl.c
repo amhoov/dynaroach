@@ -67,8 +67,13 @@ static void mcSetupPeripheral(void)
     PTCONbits.PTSIDL = 0; // runs in CPU idle mode
     PTCONbits.PTEN = 1;
 
-    P1OVDCONbits.POVD1L = 1;
-    P1OVDCONbits.POVD1H = 0;
-    P1OVDCONbits.POUT1H = 0;
+    //P1OVDCONbits.POVD1L = 1;
+    //P1OVDCONbits.POVD1H = 0;
+    //P1OVDCONbits.POUT1H = 0;
+
+    P1OVDCONbits.POVD1L = 0; 
+    P1OVDCONbits.POVD1H = 1; 
+    P1OVDCONbits.POUT1L = 0;
+
 }
 

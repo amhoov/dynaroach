@@ -65,6 +65,12 @@ static void cmdRunGyroCalib(unsigned char status, unsigned char length, unsigned
 
 static void send(unsigned char status, unsigned char length, unsigned char *frame, unsigned char type);
 
+//Delete these once trackable management code is working
+
+static unsigned char tls = 0;
+static unsigned char trs = 0;
+static unsigned char tms = 0;
+
 void cmdSetup(void)
 {
     unsigned int i;
@@ -144,7 +150,6 @@ static void cmdTxSavedData(unsigned char status, unsigned char length, unsigned 
 
     unsigned int end_page;
 
-    end_page = (int)((long)start_page + ((long)tx_data_size * (long)num_samples)/(long)FLASH_8MBIT_BYTES_PER_PAGE + 1);
     MacPacket packet;
     Payload pld;
 
@@ -153,10 +158,11 @@ static void cmdTxSavedData(unsigned char status, unsigned char length, unsigned 
     LED_2 = 1;
     LED_3 = 0;
 
-
-    for (i = start_page; i < end_page; ++i) {
+    unsigned int read = 0;
+    i = start_page;
+    while(read < num_samples + 100)
+    {
         j = 0;
-        //TODO: Replace this 264 with a page size constant
         while (j + tx_data_size <= 264) {
             packet = radioRequestPacket(tx_data_size);
             if(packet == NULL)
@@ -174,9 +180,10 @@ static void cmdTxSavedData(unsigned char status, unsigned char length, unsigned 
             }
             delay_ms(5);
             j += tx_data_size;
-            num_samples--;
-            if(num_samples == 0) break;
+            read++;
         }
+
+        i++;
 
         if ((i >> 7) & 0x1) {
             LED_1 = ~LED_1;
@@ -255,15 +262,13 @@ static void cmdConfigureTrial(unsigned char status, unsigned char length, unsign
         delay_ms(150);
     }
     LED_3 = 1;
+
 }
 
 static void cmdRunTrial(unsigned char status, unsigned char length, unsigned char *frame)
 {
     st_idx = 0;
     attSetEstimateRunning(1);
-    dfmemEraseSector(0x100);
-    dfmemEraseSector(0x200);
-
     trial_start_time = sclockGetLocalTicks();
     sample_cnt.sval = 0;
     _T1IE = 1;
@@ -495,6 +500,7 @@ void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void)
     int i;
 
     st = stTable[st_idx];
+
     t_ticks.lval = sclockGetLocalTicks() - trial_start_time;
     //Get pose estimates
     if(attIsRunning())
@@ -528,11 +534,58 @@ void __attribute__((interrupt, no_auto_psv)) _T1Interrupt(void)
 
     while (st->timestamp < t_ticks.lval)
     {
+        // Begin trackable switching code
+        if(st->cmd == CMD_SET_MOTOR)
+        {
+            if(st->params[1] > 0 && tms == 0)
+            {
+                MD_LED_1 = 1;
+                MD_LED_2 = 1;
+                tms = 1;
+            }else if(st->params[1] == 0 && tms == 1)
+            {
+                MD_LED_1 = 0;
+                MD_LED_2 = 0;
+                tms = 0;
+            }
+        }else if (st->cmd == CMD_SET_SMA)
+        {
+            if(st->params[0] == SMA_LEFT)
+            {
+                if(st->params[1] > 0 && tls == 0)
+                {
+                    MD_LED_1 = 0;
+                    tls = 1;
+                }else if (st->params[1] == 0 && tls == 1)
+                {
+                    MD_LED_1 = 1;
+                    tls = 0;
+                }
+            }else if(st->params[0] == SMA_RIGHT)
+            {
+                if(st->params[1] > 0 && trs == 0)
+                {
+                    MD_LED_2 = 0;
+                    trs = 1;
+                }else if (st->params[1] == 0 && trs == 1)
+                {
+                    MD_LED_2 = 1;
+                    trs = 0;
+                }
+            }
+        }
+
         cmd_func[st->cmd](STATUS_UNUSED, 2, st->params);
         st_idx++;
         if (st_idx == st_cnt)
         {
             attSetEstimateRunning(0);
+            MD_LED_1 = 0;
+            MD_LED_2 = 0;
+            //Turn off SMA
+            mcSetDutyCycle(3, 0);
+            //Turn off Motor
+            mcSetDutyCycle(1, 0);
             _T1IE = 0;
             break;
         }else

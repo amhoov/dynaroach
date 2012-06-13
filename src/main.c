@@ -16,25 +16,13 @@
 * Author: AMH
 *********************************************************************************************************/
 #include "p33Fxxxx.h"
-//#include "init.h"
 #include "init_default.h"
-//#include "uart.h"
 #include "timer.h"
 #include "adc.h"
 #include "i2c.h"
-//#include "interrupts.h"
-//#include "ports.h"
-//#include "ovcam.h"
-//#include "fpqueue.h"
 #include "consts.h"
 #include "utils.h"
-//#include "payload_queue.h"
-//#include "payload.h"
-//#include "at86rf.h"
-//#include "radio.h"
-//#include "radio_dma.h"
 #include "radio.h"
-//#include "tests.h"
 #include "gyro.h"
 #include "xl.h"
 #include "dfmem.h"
@@ -43,7 +31,6 @@
 #include "attitude_q.h"
 #include "sma.h"
 #include "network.h"
-//#include "stopwatch.h"
 #include "sclock.h"
 #include "ppool.h"
 #include "cmd.h"
@@ -89,9 +76,7 @@ int main ( void )
 
     //BEGIN RADIO SETUP
     radioInit(50, 10); // tx_queue length: 50, rx_queue length: 10
-//    radioSetup(50, 10); // tx_queue length: 50, rx_queue length: 10
     radioSetSrcAddr(NETWORK_SRC_ADDR);
-//    radioSetDestPanID(NETWORK_BASESTATION_PAN_ID);
     radioSetSrcPanID(NETWORK_BASESTATION_PAN_ID);
     radioSetChannel(NETWORK_BASESTATION_CHANNEL);
     //END RADIO SETUP
@@ -118,7 +103,6 @@ int main ( void )
     AD1CON1bits.ADSIDL = 0;     //continue in idle mode
     AD1CON1bits.AD12B = 0;      //10 bit mode
 
-    //AD1CON2bits.BUFM = 0;       //
     AD1CON2bits.VCFG = 0b000;   //Vdd is pos. ref and Vss is neg. ref.
     AD1CON2bits.CSCNA = 0;      //Do not scan inputs
     AD1CON2bits.CHPS = 0b00;    //Convert channels 0 and 1
@@ -126,37 +110,25 @@ int main ( void )
 
     AD1CON3bits.ADRC = 0;       //Derive conversion clock from system clock
     AD1CON3bits.ADCS = 0b00000010; // Each TAD is 3 Tcy
-    //AD1CON1bits.ADDMABM = 1;
-
-    //AD1CON4bits.DMABL = 1;
 
     AD1PCFGL = 0xFFF0;          //Enable AN0 - AN3 as analog inputs
-    //AD1PCFGL = 0xFFFE;
 
     AD1CHS0bits.CH0SA = 0b00000;      //Select AN0 for CH0 +ve input
     AD1CHS0bits.CH0NA = 0b00000;      //Select Vref- for CH0 -ve input
-    //AD1CSSLbits.CSS0 = 1;
-    //AD1CSSLbits.CSS1 = 1;
 
-    //IFS0bits.AD1IF = 0; //Clear the A/D interrupt flag bit
-    //IEC0bits.AD1IE = 1; //Disable A/D interrupts
     AD1CON1bits.ADON = 1;       //enable
     //END ADC SETUP
 
-    //initDma0();
 
     mcSetup();
-
     gyroSetup();
     xlSetup();
     dfmemSetup();
-//    SetupTimer2();
-//
-    //swatchSetup();
     sclockSetup();
     timer1Setup();
     cmdSetup();
-    
+   
+
     attSetup(1.0/TIMER1_FCY);
     char j;
     for(j=0; j<6; j++){
@@ -167,6 +139,7 @@ int main ( void )
         LED_3 = ~LED_3;
         delay_ms(100);
     }
+
 
     LED_1 = 1;
     LED_2 = 1;
