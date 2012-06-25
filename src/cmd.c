@@ -1,6 +1,5 @@
 #include "p33Fxxxx.h"
 #include "cmd.h"
-//#include "radio_dma.h"
 #include "radio.h"
 #include "mac_packet.h"
 #include "dfmem.h"
@@ -11,7 +10,6 @@
 #include "consts.h"
 #include "network.h"
 #include "utils.h"
-//#include "stopwatch.h"
 #include "sclock.h"
 #include "statetransition.h"
 #include "led.h"
@@ -21,6 +19,8 @@
 
 
 #define FLASH_8MBIT_BYTES_PER_PAGE          264
+
+#define ROBOT 0
 
 static union {
     struct {
@@ -62,7 +62,7 @@ static void cmdTestHall(unsigned char status, unsigned char length, unsigned cha
 static void cmdTestBatt(unsigned char status, unsigned char length, unsigned char* frame);
 static void cmdGetSampleCount(unsigned char status, unsigned char length, unsigned char *frame);
 static void cmdRunGyroCalib(unsigned char status, unsigned char length, unsigned char *frame);
-
+static void cmdGetGyroCalibParam(unsigned char status, unsigned char length, unsigned char *frame);
 static void send(unsigned char status, unsigned char length, unsigned char *frame, unsigned char type);
 
 //Delete these once trackable management code is working
@@ -96,6 +96,7 @@ void cmdSetup(void)
     cmd_func[CMD_ERASE_MEM_SECTOR] = &cmdEraseMemSector;
     cmd_func[CMD_GET_SAMPLE_COUNT] = &cmdGetSampleCount;
     cmd_func[CMD_RUN_GYRO_CALIB] = &cmdRunGyroCalib;
+    cmd_func[CMD_GET_GYRO_CALIB_PARAM] = &cmdGetGyroCalibParam;
 }
 
 static void cmdSetMotor(unsigned char status, unsigned char length, unsigned char *frame)
@@ -105,12 +106,12 @@ static void cmdSetMotor(unsigned char status, unsigned char length, unsigned cha
 
 static void cmdSetSma(unsigned char status, unsigned char length, unsigned char *frame)
 {
-    if(frame[0] == SMA_LEFT)
+    if(frame[0] == SMA_RIGHT)
     {
         P1OVDCONbits.POVD3L = 1; 
         P1OVDCONbits.POVD3H = 0; 
         P1OVDCONbits.POUT3H = 0; 
-    }else if (frame[0] == SMA_RIGHT)
+    }else if (frame[0] == SMA_LEFT)
     {
         P1OVDCONbits.POVD3H = 1; 
         P1OVDCONbits.POVD3L = 0; 
@@ -142,62 +143,65 @@ void cmdHandleRadioRxBuffer(void)
 
 static void cmdTxSavedData(unsigned char status, unsigned char length, unsigned char *frame)
 {
-    unsigned int start_page = frame[0] + (frame[1] << 8);
-    //unsigned int end_page = frame[2] + (frame[3] << 8);
-    unsigned int num_samples = frame[2] + (frame[3] << 8);
-    unsigned int tx_data_size = frame[4] + (frame[5] << 8);
-    unsigned int i, j;
-
-    unsigned int end_page;
-
-    MacPacket packet;
-    Payload pld;
-
-
-    LED_1 = 0;
-    LED_2 = 1;
-    LED_3 = 0;
-
-    unsigned int read = 0;
-    i = start_page;
-    while(read < num_samples + 100)
+    if(ROBOT)
     {
-        j = 0;
-        while (j + tx_data_size <= 264) {
-            packet = radioRequestPacket(tx_data_size);
-            if(packet == NULL)
-            {
-                continue;
+        unsigned int start_page = frame[0] + (frame[1] << 8);
+        //unsigned int end_page = frame[2] + (frame[3] << 8);
+        unsigned int num_samples = frame[2] + (frame[3] << 8);
+        unsigned int tx_data_size = frame[4] + (frame[5] << 8);
+        unsigned int i, j;
+
+        unsigned int end_page;
+
+        MacPacket packet;
+        Payload pld;
+
+
+        LED_1 = 0;
+        LED_2 = 1;
+        LED_3 = 0;
+
+        unsigned int read = 0;
+        i = start_page;
+        while(read < num_samples + 100)
+        {
+            j = 0;
+            while (j + tx_data_size <= 264) {
+                packet = radioRequestPacket(tx_data_size);
+                if(packet == NULL)
+                {
+                    continue;
+                }
+                macSetDestPan(packet, NETWORK_BASESTATION_PAN_ID);
+                macSetDestAddr(packet, NETWORK_BASESTATION_ADDR);
+                pld = macGetPayload(packet);
+                dfmemRead(i, j, tx_data_size, payGetData(pld));
+                paySetType(pld, CMD_TX_SAVED_DATA);
+                if(radioEnqueueTxPacket(packet))
+                {
+                    radioProcess();
+                }
+                delay_ms(5);
+                j += tx_data_size;
+                read++;
             }
-            macSetDestPan(packet, NETWORK_BASESTATION_PAN_ID);
-            macSetDestAddr(packet, NETWORK_BASESTATION_ADDR);
-            pld = macGetPayload(packet);
-            dfmemRead(i, j, tx_data_size, payGetData(pld));
-            paySetType(pld, CMD_TX_SAVED_DATA);
-            if(radioEnqueueTxPacket(packet))
-            {
-                radioProcess();
+
+            i++;
+
+            if ((i >> 7) & 0x1) {
+                LED_1 = ~LED_1;
+                LED_2 = ~LED_2;
             }
-            delay_ms(5);
-            j += tx_data_size;
-            read++;
         }
 
-        i++;
-
-        if ((i >> 7) & 0x1) {
-            LED_1 = ~LED_1;
-            LED_2 = ~LED_2;
-        }
+        LED_1 = 1;
+        LED_2 = 1;
+        LED_3 = 1;
+        delay_ms(2000);
+        LED_1 = 0;
+        LED_2 = 0;
+        LED_3 = 0;
     }
-
-    LED_1 = 1;
-    LED_2 = 1;
-    LED_3 = 1;
-    delay_ms(2000);
-    LED_1 = 0;
-    LED_2 = 0;
-    LED_3 = 0;
 }
 
 static void cmdConfigureSma(unsigned char status, unsigned char length, unsigned char *frame)
@@ -315,6 +319,14 @@ static void cmdRunGyroCalib(unsigned char status, unsigned char length, unsigned
     gyroRunCalib(count);
 
     LED_GRN = 0; LED_YLW = 0;
+}
+
+static void cmdGetGyroCalibParam(unsigned char status, unsigned char length, unsigned char *frame)
+{
+    if(ROBOT)
+    {
+        send(status, GYRO_CALIB_PARAM_LEN, gyroGetCalibParam(), CMD_GET_GYRO_CALIB_PARAM); 
+    }
 }
 
 /*****************************************************************************
@@ -454,9 +466,12 @@ static void cmdEraseMemSector(unsigned char status, unsigned char length, unsign
 
 static void cmdGetSampleCount(unsigned char status, unsigned char length, unsigned char *frame)
 {
-    frame[0] = sample_cnt.cval[0];
-    frame[1] = sample_cnt.cval[1];
-    send(status, 2, frame, CMD_GET_SAMPLE_COUNT); 
+    if(ROBOT)
+    {
+        frame[0] = sample_cnt.cval[0];
+        frame[1] = sample_cnt.cval[1];
+        send(status, 2, frame, CMD_GET_SAMPLE_COUNT); 
+    }
 }
 
 static void cmdNop(unsigned char status, unsigned char length, unsigned char *frame)
