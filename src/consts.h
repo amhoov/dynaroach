@@ -33,21 +33,23 @@
 
 
 //Testing constants
-#define CMD_TEST_RADIO          0x00 
-#define CMD_TEST_GYRO           0x01
-#define CMD_TEST_ACCEL          0x02
-#define CMD_TEST_DFLASH         0x03 
-#define CMD_TEST_MOTOR          0x04
-#define CMD_TEST_SMA            0x05
-#define CMD_TEST_HALL           0x06
-#define CMD_TEST_BATT           0x07
-#define CMD_ERASE_MEM_SECTOR    0x08
-#define CMD_GET_SAMPLE_COUNT    0x09
-#define CMD_RUN_GYRO_CALIB      0x0A
+#define CMD_TEST_RADIO              0x00 
+#define CMD_TEST_GYRO               0x01
+#define CMD_TEST_ACCEL              0x02
+#define CMD_TEST_DFLASH             0x03 
+#define CMD_TEST_MOTOR              0x04
+#define CMD_TEST_SMA                0x05
+#define CMD_TEST_HALL               0x06
+#define CMD_TEST_BATT               0x07
+#define CMD_ERASE_MEM_SECTOR        0x08
+#define CMD_GET_SAMPLE_COUNT        0x09
+#define CMD_RUN_GYRO_CALIB          0x0A
+#define CMD_GET_GYRO_CALIB_PARAM    0x0B
 
 #define TEST_PACKET_INTERVAL_MS 1000
 #define NUM_TEST_PACKETS        10
 #define IMU_DATA_LEN            6
+#define GYRO_CALIB_PARAM_LEN    12
 #define MEM_START_PAGE          0x100
 
 //Command constants
