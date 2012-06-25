@@ -1,13 +1,16 @@
 #!/usr/bin/python
 
-TEST_GYRO           = 0x01
-TEST_ACCEL          = 0x02
-TEST_DFLASH         = 0x03
-TEST_HALL           = 0x06
-TEST_BATT           = 0x07
-ERASE_MEM_SECTOR    = 0x08
-GET_SAMPLE_COUNT    = 0x09
-RUN_GYRO_CALIB      = 0x0A
+STATUS_UNUSED           = 0x00
+
+TEST_GYRO               = 0x01
+TEST_ACCEL              = 0x02
+TEST_DFLASH             = 0x03
+TEST_HALL               = 0x06
+TEST_BATT               = 0x07
+ERASE_MEM_SECTOR        = 0x08
+GET_SAMPLE_COUNT        = 0x09
+RUN_GYRO_CALIB          = 0x0A
+GET_GYRO_CALIB_PARAM    = 0x0B
 
 
 CONFIG_SMA      = 0x10
