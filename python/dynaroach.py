@@ -1,5 +1,5 @@
 '''
-File: dynaRoACH.py
+File: dynaroach.py
 Author: Aaron M. Hoover
 Date: 2012-05-03
 Description: A class representing the functionality necessary for testing and
@@ -14,7 +14,6 @@ import math
 from serial import Serial, SerialException
 import numpy as np
 
-from xbee import XBee
 from struct import pack, unpack
 from operator import attrgetter
 
@@ -29,14 +28,6 @@ kPldStatusIdx = 0
 kPldCommandIdx = 1
 kPldDataStart = 2
 
-kStatusUnused   = 0x00
-kTestRadioCmd   = 0x00
-kTestGyroCmd    = 0x01
-kTestAccelCmd   = 0x02
-kTestDFlashCmd  = 0x03
-kTestMotorCmd   = 0x04
-kTestSMACmd     = 0x05
-
 kConfigureSMA   = 0x10
 kRunTrial       = 0x11
 
@@ -47,14 +38,20 @@ DEFAULT_BAUD_RATE = 230400
 DEFAULT_DEST_ADDR = '\x01\x10'
 DEFAULT_DEV_NAME = '/dev/tty.usbserial-A8THYF0S'
 
-SMA_LEFT =  0
-SMA_RIGHT = 1
+SMA_RIGHT = 0
+SMA_LEFT =  1
 
 GYRO_LSB2DEG = 0.0695652174  # 14.375 LSB/(deg/s)
 GYRO_LSB2RAD = 0.00121414209
 
 DFMEM_PAGE_SIZE = 264
 SAMPLE_BYTES = 35
+
+TICKS_PER_MILLI     = 625.0
+XL_CNTS_PER_G       = 256.0
+G                   = 9.81
+BEMF_VOLTS_PER_CNT  = 3.3/512
+VBATT_VOLTS_PER_CNT = 3.3/512
 
 
 class DynaRoach():
@@ -90,12 +87,12 @@ class DynaRoach():
         typeID = pld.type
         data = pld.data
 
-        if typeID == kTestAccelCmd or typeID == kTestGyroCmd:
-            print unpack('3h', data)
-        elif typeID == kTestDFlashCmd:
+        if typeID == cmd.TEST_ACCEL or typeID == cmd.TEST_GYRO:
+            print unpack('<3h', data)
+        elif typeID == cmd.TEST_DFLASH:
             print ''.join(data)
-        elif typeID == kTestMotorCmd:
-            print unpack('50H', data)
+        #elif typeID == kTestMotorCmd:
+        #    print unpack('50H', data)
         elif typeID == cmd.TEST_BATT:
             print unpack('2H', data)
         elif typeID == cmd.TX_SAVED_DATA:
@@ -107,6 +104,10 @@ class DynaRoach():
             print('Last sample count %d' % self.last_sample_count)
             #datum = list(unpack('LFFFHHHHHBHHHH', data))
             #print(datum)
+        elif typeID == cmd.GET_GYRO_CALIB_PARAM:
+            self.gyro_offsets = list(unpack('<fff', data))
+            print(self.gyro_offsets)
+
 
 
     def echo(self):
@@ -129,7 +130,7 @@ class DynaRoach():
             print('\n')
             time.sleep(1)
 
-    def configureTrial(self, trial):
+    def configure_trial(self, trial):
         '''
             Description:
                 Configure trial parameters.
@@ -137,11 +138,12 @@ class DynaRoach():
                 trial: The trial configuration to be saved.
         '''
 
-        data_out = trial.toCmdData()
-        self.radio.send(kStatusUnused, cmd.CONFIG_TRIAL, data_out)
+        data_out = trial.to_cmd_data()
+        print("Configuring trial...")
+        self.radio.send(cmd.STATUS_UNUSED, cmd.CONFIG_TRIAL, data_out)
 
 
-    def configureSMA(self, sma):
+    def configure_sma(self, sma):
         '''
             Description:
                 Configure SMA actuation parameters
@@ -149,12 +151,12 @@ class DynaRoach():
                 sma: the sma configuration to be saved. 
         '''
 
-        data_out = sma.toCmdData()
+        data_out = sma.to_cmd_data()
         self.state_data = []
         self.data_cnt = 0
-        self.radio.send(kStatusUnused, cmd.CONFIG_SMA, data_out)
+        self.radio.send(cmd.STATUS_UNUSED, cmd.CONFIG_SMA, data_out)
 
-    def runTrial(self):
+    def run_trial(self):
         '''
             Description:
                 Start a trial running.
@@ -162,11 +164,15 @@ class DynaRoach():
                 trial: The configured trial to be executed.
         '''
 
-        self.radio.send(kStatusUnused, cmd.RUN_TRIAL, [])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.RUN_TRIAL, [])
 
-    def run_gyro_calib(self, num_samples=2000):
+    def run_gyro_calib(self, num_samples='2000'):
         print("Calibrating gyroscope...")
-        self.radio.send(0, cmd.RUN_GYRO_CALIB, [num_samples])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.RUN_GYRO_CALIB, [num_samples])
+
+    def get_gyro_calib_param(self):
+        print("Requesting gyro calibration parameters...")
+        self.radio.send(cmd.STATUS_UNUSED, cmd.GET_GYRO_CALIB_PARAM, [])
 
     def test_gyro(self):
         '''
@@ -175,7 +181,7 @@ class DynaRoach():
         '''
 
         print("Testing gyroscope...")
-        self.radio.send(0, cmd.TEST_GYRO, [])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_GYRO, [])
 
     def test_accel(self):
         '''
@@ -185,7 +191,7 @@ class DynaRoach():
 
 
         print("Testing accelerometer...")
-        self.radio.send(0, cmd.TEST_ACCEL, [])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_ACCEL, [])
 
     def test_dflash(self):
         '''
@@ -195,86 +201,92 @@ class DynaRoach():
         '''
 
         print("Testing data flash...")
-        self.radio.send(0, cmd.TEST_DFLASH, [])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_DFLASH, [])
 
-    def test_motor(self, motor_id, time, duty_cycle, direction, return_emf=0):
-        '''
-        Description:
-            Turn on a motor.
-        Parameters:
-            motor_id    : The motor number to turn on
-            time        : The amount of time to turn the motor on for (in
-                          seconds)
-            duty_cycle  : The duty cycle of the PWM signal used to control the
-                          motor in percent (0 - 100) 
-            direction   : The direction to spin the motor. There are *three*
-                          options for this parameter. 0 - reverse, 1 - forward, 
-                          2 high impedance motor controller output = braking
-            return_emf  : Send the back emf readings over the radio channel.
-        '''
+#    def test_motor(self, motor_id, time, duty_cycle, direction, return_emf=0):
+#        '''
+#        Description:
+#            Turn on a motor.
+#        Parameters:
+#            motor_id    : The motor number to turn on
+#            time        : The amount of time to turn the motor on for (in
+#                          seconds)
+#            duty_cycle  : The duty cycle of the PWM signal used to control the
+#                          motor in percent (0 - 100) 
+#            direction   : The direction to spin the motor. There are *three*
+#                          options for this parameter. 0 - reverse, 1 - forward, 
+#                          2 high impedance motor controller output = braking
+#            return_emf  : Send the back emf readings over the radio channel.
+#        '''
+#
+#        if direction >= 2:
+#            direction = 2
+#        elif direction <= 0:
+#            direction = 0
+#        else:
+#            direction = 1
+#
+#
+#        if return_emf != 1:
+#            return_emf = 0
+#
+#        data_out = chr(cmd.STATUS_UNUSED) + chr(cmd.TEST_MOTOR) + chr(motor_id) + \
+#                   chr(time) + chr(duty_cycle) + chr(direction) + \
+#                   chr(return_emf)
+#        if(self.check_conn()):
+#            self.radio.tx(dest_addr=self.dest_addr, data=data_out)
 
-        if direction >= 2:
-            direction = 2
-        elif direction <= 0:
-            direction = 0
-        else:
-            direction = 1
-
-
-        if return_emf != 1:
-            return_emf = 0
-
-        data_out = chr(kStatusUnused) + chr(kTestMotorCmd) + chr(motor_id) + \
-                   chr(time) + chr(duty_cycle) + chr(direction) + \
-                   chr(return_emf)
-        if(self.check_conn()):
-            self.radio.tx(dest_addr=self.dest_addr, data=data_out)
-
-    def test_sma(self, chan_id, time, duty_cycle):
-        '''
-        Description:
-            Turn on an SMA
-        Parameters:
-            chan_id     : The SMA channel to turn on
-            time        : The amount of time to turn the SMA on for (in
-                          seconds)
-            duty_cycle  : The duty cycle of the PWM signal used to control the
-                          SMA in percent (0 - 100)
-        '''
-
-        if(duty_cycle < 0 or duty_cycle > 100):
-            print("You entered an invalid duty cycle.")
-            return
-
-        data_out = chr(kStatusUnused) + chr(kTestSMACmd) + chr(chan_id) + \
-                   chr(time) + chr(duty_cycle)
-
-        if(self.check_conn()):
-            self.radio.tx(dest_addr=self.dest_addr, data=data_out)
+#    def test_sma(self, chan_id, time, duty_cycle):
+#        '''
+#        Description:
+#            Turn on an SMA
+#        Parameters:
+#            chan_id     : The SMA channel to turn on
+#            time        : The amount of time to turn the SMA on for (in
+#                          seconds)
+#            duty_cycle  : The duty cycle of the PWM signal used to control the
+#                          SMA in percent (0 - 100)
+#        '''
+#
+#        if(duty_cycle < 0 or duty_cycle > 100):
+#            print("You entered an invalid duty cycle.")
+#            return
+#
+#        data_out = chr(cmd.STATUS_UNUSED) + chr(cmd.TEST_SMA) + chr(chan_id) + \
+#                   chr(time) + chr(duty_cycle)
+#
+#        if(self.check_conn()):
+#            self.radio.tx(dest_addr=self.dest_addr, data=data_out)
 
     def test_hall(self):
-        self.radio.send(0, cmd.TEST_HALL, [])
+        self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_HALL, [])
 
     def test_batt(self):
         data = ''.join(chr(0) for i in range(4))
-        self.radio.send(0, cmd.TEST_BATT, data)
+        self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_BATT, data)
 
     def get_sample_count(self):
-        self.radio.send(0, cmd.GET_SAMPLE_COUNT, pack('H', 0))
+        self.radio.send(cmd.STATUS_UNUSED, cmd.GET_SAMPLE_COUNT, pack('H', 0))
 
     def transmit_saved_data(self):
-        self.data_cnt = 0
-        start_page = 0x100
-        self.get_sample_count()
-        time.sleep(0.5)
+        if(self.last_sample_count == 0):
+            self.get_sample_count()
+            time.sleep(0.5)
+
         if(self.last_sample_count == 0):
             print("There is no previously saved data.")
             return
         else:
-            self.radio.send(0, cmd.TX_SAVED_DATA, pack('3H', start_page, self.last_sample_count, SAMPLE_BYTES))
+            self.data_cnt = 0
+            start_page = 0x100
+            print("Transmitting saved data...")
+            self.state_data = []
+            self.data_cnt = 0
+            self.radio.send(cmd.STATUS_UNUSED, cmd.TX_SAVED_DATA, pack('3H', start_page, self.last_sample_count, SAMPLE_BYTES))
 
     def erase_mem_sector(self, sector):
-        self.radio.send(0, cmd.ERASE_MEM_SECTOR, pack('H', sector))
+        print("Erasing memory sector " + str(sector))
+        self.radio.send(cmd.STATUS_UNUSED, cmd.ERASE_MEM_SECTOR, pack('H', sector))
 
     def print_packet(self, packet):
         '''
@@ -302,8 +314,8 @@ class DynaRoach():
         state_data_arr = np.array(self.state_data)
         fmt = '%d, %f, %f, %f, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d'
         np.savetxt(fname, state_data_arr, fmt)
+        #np.savetxt(self.datestring() + ".csv", state_data_arr, fmt)
         print("State data saved to file: " + fname)
-
 
     def __del__(self):
         '''
@@ -311,33 +323,29 @@ class DynaRoach():
             Clean up the connection when the object is deleted.
         '''
         try:
-            self.conn.close()
+            self.radio.close()
         except AttributeError:
+            print('Caught Attribute Error')
             pass
-
 
 class Trial():
     def __init__(self):
         self.state_transitions = []
         self.save_data = True
 
-    def toCmdData(self):
-        cmdData = ''
+    def to_cmd_data(self):
         self.state_transitions = sorted(self.state_transitions,
                      key=attrgetter('timestamp'))
-        #tmp = sorted(self.state_transitions,
-        #             key=attrgetter('timestamp'))
-        #self.state_transitions = tmp
-        cmdData += pack('B', self.save_data)
+        cmd_data = pack('B', self.save_data)
         for st in self.state_transitions:
-            cmdData += pack('H', st.timestamp)
-            cmdData += pack('B', st.cmd)
+            cmd_data += pack('H', st.timestamp)
+            cmd_data += pack('B', st.cmd)
             for param in st.params:
-                cmdData += pack('B', param)
-        return cmdData
+                cmd_data += pack('B', param)
+        return cmd_data
 
-    def saveToFile(self, fname):
-        outfile = open(fname, 'w')
+    def save_to_file(self, fname, **kwds):
+        outfile = open(fname + '.csv', 'w')
         outfile.write('%d\n' % self.save_data)
         for t in self.state_transitions:
             outfile.write('%d, %d, %d, %d \n' % (t.timestamp, t.cmd, t.params[0], \
@@ -345,9 +353,16 @@ class Trial():
         outfile.flush()
         outfile.close()
 
-    def loadFromFile(self, fname):
+        outfile = open(fname + '.py', 'w')
+        outfile.write('%s' % kwds)
+        outfile.close()
+
+
+    def load_from_file(self, fname):
         try:
             infile = open(fname, 'r')
+            self.state_transitions = []
+            self.save_data = False
             self.save_data = (bool)((int)(infile.readline().rstrip('\n')))
             for line in infile.readlines():
                 st = line.rstrip('\n').split(',')
@@ -359,8 +374,6 @@ class Trial():
         except IOError:
             'File doesn\'t exist. Try again.'
 
-
-
 class SMA():
     def __init__(self):
         self.id = 0
@@ -368,20 +381,8 @@ class SMA():
         self.hot_time = 0
         self.dc_low = 0
 
-    def toCmdData(self):
-        cmdData = pack('BBHB', self.id, self.dc_high, self.hot_time, self.dc_low)
-        return cmdData
-
-class StateDatum():
-
-    def __init__(self):
-        self.timestamp = 0
-        self.back_emf = 0
-        self.xl = AccelState()
-        self.gyro = GyroState()
-        self.encoder_pos = 0
-        self.hall_state = 0
-        self.v_batt = 0
+    def to_cmd_data(self):
+        return pack('BBHB', self.id, self.dc_high, self.hot_time, self.dc_low)
 
 class AccelState():
 
@@ -395,9 +396,17 @@ class GyroState():
 
     def __init__(self, packed_fields=None):
         if (packed_fields):
-            (self.rot_x, self.rot_y, self.rot_z) = unpack('hhh', packed_fields)
+            (self.wx, self.wy, self.wz) = unpack('hhh', packed_fields)
         else:
-            (self.rot_x, self.rot_y, self.rot_z) = (0, 0, 0)
+            (self.wx, self.wy, self.wz) = (0, 0, 0)
+
+class PoseEstimate():
+
+    def __init__(self, packed_fields=None):
+        if(packed_fields):
+            (self.yaw, self.pitch, self.roll) = unpack('hhh', packed_fields)
+        else:
+            (self.yaw, self.pitch, self.roll) = unpack('hhh', packed_fields)
 
 class StateTransition():
 
@@ -405,4 +414,21 @@ class StateTransition():
         self.timestamp = ts
         self.cmd = cmd
         self.params = params
+
+def datestring():
+  """
+  Datestring
+
+  by Sam Burden, Shai Revzen 2012
+  """
+  t = time.localtime()
+
+  ye = '%04d'%t.tm_year
+  mo = '%02d'%t.tm_mon
+  da = '%02d'%t.tm_mday
+  ho = '%02d'%t.tm_hour
+  mi = '%02d'%t.tm_min
+
+  return ye+mo+da+'-'+ho+mi
+
 
