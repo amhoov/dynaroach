@@ -21,19 +21,6 @@ from lib import cmd
 from lib.basestation import BaseStation
 from lib.payload import Payload
 
-kTimeout = 5
-kRtscts = 0
-
-kPldStatusIdx = 0
-kPldCommandIdx = 1
-kPldDataStart = 2
-
-kConfigureSMA   = 0x10
-kRunTrial       = 0x11
-
-ON = 1
-OFF = 0
-
 DEFAULT_BAUD_RATE = 230400
 DEFAULT_DEST_ADDR = '\x01\x10'
 DEFAULT_DEV_NAME = '/dev/tty.usbserial-A8THYF0S'
@@ -91,8 +78,6 @@ class DynaRoach():
             print unpack('<3h', data)
         elif typeID == cmd.TEST_DFLASH:
             print ''.join(data)
-        #elif typeID == kTestMotorCmd:
-        #    print unpack('50H', data)
         elif typeID == cmd.TEST_BATT:
             print unpack('2H', data)
         elif typeID == cmd.TX_SAVED_DATA:
@@ -102,13 +87,9 @@ class DynaRoach():
         elif typeID == cmd.GET_SAMPLE_COUNT:
             self.last_sample_count = unpack('H', data)[0]
             print('Last sample count %d' % self.last_sample_count)
-            #datum = list(unpack('LFFFHHHHHBHHHH', data))
-            #print(datum)
         elif typeID == cmd.GET_GYRO_CALIB_PARAM:
             self.gyro_offsets = list(unpack('<fff', data))
             print(self.gyro_offsets)
-
-
 
     def echo(self):
         '''
@@ -141,7 +122,6 @@ class DynaRoach():
         data_out = trial.to_cmd_data()
         print("Configuring trial...")
         self.radio.send(cmd.STATUS_UNUSED, cmd.CONFIG_TRIAL, data_out)
-
 
     def configure_sma(self, sma):
         '''
@@ -188,7 +168,6 @@ class DynaRoach():
         Description:
             Read the XYZ values from the accelerometer.
         '''
-
 
         print("Testing accelerometer...")
         self.radio.send(cmd.STATUS_UNUSED, cmd.TEST_ACCEL, [])
@@ -373,40 +352,6 @@ class Trial():
                                                               int(st[3])]))
         except IOError:
             'File doesn\'t exist. Try again.'
-
-class SMA():
-    def __init__(self):
-        self.id = 0
-        self.dc_high = 0
-        self.hot_time = 0
-        self.dc_low = 0
-
-    def to_cmd_data(self):
-        return pack('BBHB', self.id, self.dc_high, self.hot_time, self.dc_low)
-
-class AccelState():
-
-    def __init__(self, packed_fields=None):
-        if(packed_fields):
-            (self.x, self.y, self.z) = unpack('hhh', packed_fields)
-        else:
-            (self.x, self.y, self.z) = (0, 0, 0)
-
-class GyroState():
-
-    def __init__(self, packed_fields=None):
-        if (packed_fields):
-            (self.wx, self.wy, self.wz) = unpack('hhh', packed_fields)
-        else:
-            (self.wx, self.wy, self.wz) = (0, 0, 0)
-
-class PoseEstimate():
-
-    def __init__(self, packed_fields=None):
-        if(packed_fields):
-            (self.yaw, self.pitch, self.roll) = unpack('hhh', packed_fields)
-        else:
-            (self.yaw, self.pitch, self.roll) = unpack('hhh', packed_fields)
 
 class StateTransition():
 
