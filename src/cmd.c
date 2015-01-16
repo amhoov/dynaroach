@@ -24,7 +24,7 @@
 
 static union {
     struct {
-        unsigned long page;
+        unsigned int page;
         unsigned int byte;
     } index;
     unsigned char chr_index[4]; 
